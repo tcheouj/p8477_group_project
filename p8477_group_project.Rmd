@@ -1,0 +1,82 @@
+---
+title: "group_project"
+author: "Johnstone Tcheou"
+date: "2025-03-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(deSolve)
+set.seed(8477)
+```
+
+## Data
+
+```{r data}
+#load("data.contact.monthly.rda")
+#load("data.greaterPerth.2011.rda")
+```
+
+```{r exploratory}
+#View(data.greaterPerth.2011)
+```
+
+```{r parms}
+delta = 1/4 # inverse of latent period (days)
+gamma_1 = 1/10 # inverse of infectious period for 1st exposure (days)
+gamma_2 = 1/7 # inverse of infectious period for 2+ exposures (days)
+omega = 0.7 # reduced infectiousness of those who have experienced at least 1 prior infection
+sigma_e = 0.77 # reduced susceptibility due to previous exposure
+nu = 1/230 # immunity period (days)
+
+lambda = 1 # PLACEHOLDER VALUE 
+# lambda(t) = force of infection; related to proportion of population that is infectious and incorporates seasonally-fluctuating transmission 
+
+C = 0.015 # average minimum risk of hospitalization across all ages 
+D = 0.2 # scaling factor lowering risk for those with prior exposure 
+
+first_exposure_parms <- list(
+ lambda = lambda,
+ delta = delta,
+ gamma = gamma_1,
+ nu = nu,
+ C = C,
+ D = 1
+)
+
+previous_exposure_parms <- list(
+  lambda = lambda,
+  delta = delta,
+  gamma = gamma_2,
+  nu = nu,
+  C = C,
+  D = D
+)
+
+
+```
+
+```{r seir}
+
+N = 1669809 # total population of metropolitan Perth for ages 0 - 79
+
+SEIR=function(t,state,parameters){
+  with(as.list(c(state,parameters)),{
+    # rate of change
+    dS = -lambda
+    dE = lambda - delta
+    dI = delta - gamma - C
+    dR = gamma
+    
+    dcumInci = beta*S*I/N
+    # FILL IN YOUR SEIR MODEL HERE
+
+    # return the rate of change
+    # RETURN ALL STATE VARIABLES: 
+    list(c(dS, dE, dI, dR, dcumInci))
+  }) # end with(as.list...)
+}
+```
+
