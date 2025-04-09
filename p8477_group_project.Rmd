@@ -62,110 +62,87 @@ previous_exposure_parms <- list(
 
 N = 1669809 # total population of metropolitan Perth for ages 0 - 79
 
-# test_num_grps <- function(num_grp) {
-#   
-#   if (num_grp <= 60) {
-#       total_grps = num_grp
-#     } else {
-#       num_one_mo_grps <- 60
-#       num_five_yr_grps <- ceiling((num_grp - 60)/5)
-#       total_grps <- num_one_mo_grps + num_five_yr_grps
-#     }
-#     
-#   return(total_grps)
-# }
-# 
-# 
-# test_num_grps(75) # expected output - 63; 60 1 mo groups, 3 5 yr groups thereafter
-
 rsv_base <- function(num_grp) {
   with(as.list(c(num_grp)), {
     
     # 75 age groups, where 1-60 = 1 month groups (for ppl under 5)
-    # 5 yr groups after
-    
-    # to get number of 5 yr groups
-    
-    if (num_grp <= 60) {
-      total_grps = num_grp
-    } else {
-      num_one_mo_grps <- 60
-      num_five_yr_grps <- ceiling((num_grp - 60)/5)
-      total_grps <- num_one_mo_grps + num_five_yr_grps
-    }
-    
-    total_grps <- total_grps * 2 # need to double amount of grps to account for naive and subsequent exposures
+
+    # 5 yr groups after (75 - 60) * 5
     
     # initialize the state variables using the same order passed in
     
-    # use variable to specify number of groups, so first 1:total_grps are for susceptibles
-    S_naive = state[1:total_grps] 
+    # use variable to specify number of groups, so first 1:num_grp are for susceptibles
+    S_naive = state[1:num_grp] 
     
-    # then total_grps:grp+1:total_grps+num:grp are E columns
-    E_naive = state[total_grps + (1:total_grps)]
+    # then num_grp:grp+1:num_grp+num:grp are E columns
+    E_naive = state[num_grp + (1:num_grp)]
     
-    # shift again by 1:total_grps for I columns
-    I_naive = state[total_grps * 2 + (1:total_grps)]
-    
-    # shift again for R cols
-    R_naive = state[total_grps * 3 + (1:total_grps)]
-    
-    
-    # use variable to specify number of groups, so first 1:total_grps are for susceptibles
-    S_subsequent = state[total_grps * 4 + (1:total_grps)] 
-    
-    # then total_grps:grp+1:total_grps+num:grp are E columns
-    E_subsequent = state[total_grps * 5 + (1:total_grps)]
-    
-    # shift again by 1:total_grps for I columns
-    I_subsequent = state[total_grps * 6 + (1:total_grps)]
+    # shift again by 1:num_grp for I columns
+    I_naive = state[num_grp * 2 + (1:num_grp)]
     
     # shift again for R cols
-    R_subsequent = state[total_grps * 7 + (1:total_grps)]
+    R_naive = state[num_grp * 3 + (1:num_grp)]
     
+    # use variable to specify number of groups, so first 1:num_grp are for susceptibles
+    S_subsequent = state[num_grp * 4 + (1:num_grp)] 
+    # then num_grp:grp+1:num_grp+num:grp are E columns
+    E_subsequent = state[num_grp * 5 + (1:num_grp)]
     
+    # shift again by 1:num_grp for I columns
+    I_subsequent = state[num_grp * 6 + (1:num_grp)]
     
-    #length = 4 * total_grps bc 4 different state vars (S, E, I, R) for each grp
-    ODES <- vector(length = 4*total_grps) # place holder for the equations: 4 state variables (S, I, A, cumA)
+    # shift again for R cols
+    R_subsequent = state[num_grp * 7 + (1:num_grp)]
+    
+    #length = 8 * num_grp bc 4 different state vars (S, E, I, R) for each grp (2 grps, naive and subsequent)
+    ODES <- vector(length = 8*num_grp)
     
     # make sure the order of ode eqns. and state variables are the same!
     for (i in 1:num_grp){
       
       if (i == 1) { # if agegrp = 1 (representing 1 month old ppl); birth rate = mu; 0 otherwise
-        tau[i-1] = 0 
+        tau_previous = 0 
+        tau_current = 1/1 # i <= 60, so still month age groups; assume 1/1 month
+        
       } else if (i == 75) { # since mortality only occurs in oldest age group, we are in closed system so mortality rate = birth rate
-        tau[i] = mu 
-      } else {
-        tau[i] = tau[i]
+        tau_current = mu 
+        tau_previous = 1/(12*5) # i > 60, 5 year groups; assume age rate is 1/(12 months * 5 years)
+      } else if (i <= 60) {
+        tau_current = tau_previous = 1/1
+      } else if (i > 60) {
+        tau_current = tau_previous = 1/(12*5) 
       }
+      
+      # calculate lambda for a given age group by summing sources of infection from transmission matrix
+      #infection <- sum(data.contact.monthly[i, ] * I)
       
       # naive
       
       # dSi0/dt
-      ODES[i] = mu + (tau[i-1] * S0[i-1]) - (lambda[i] * sigma[i] + tau[i]) * S0[i]
+      ODES[i] = mu + (tau_previous * S0[i-1]) - (lambda[i] * sigma[i] + tau_current) * S0[i]
       
       # dEi0/dt
-      ODES[num_grp+i] = (tau[i-1] * E0[i-1]) + (lambda[i] * sigma[i] * S0[i]) - (delta + tau[i]) * E0[i]
+      ODES[num_grp+i] = (tau_previous * E0[i-1]) + (lambda[i] * sigma[i] * S0[i]) - (delta + tau_current) * E0[i]
       
       # dIi0/dt 
-      ODES[num_grp*2+i] = (tau[i-1] * I0[i-1]) + (delta * E0[i]) - (gamma_0 + tau[i]) * I0[i]
+      ODES[num_grp*2+i] = (tau_previous * I0[i-1]) + (delta * E0[i]) - (gamma_0 + tau_current) * I0[i]
       
       # dRi0/dt
-      ODES[num_grp*3+i] = (tau[i-1] * R0[i-1]) + (gamma_0 * I0[i]) - (nu + tau[i]) * R0[i]
+      ODES[num_grp*3+i] = (tau_previous * R0[i-1]) + (gamma_0 * I0[i]) - (nu + tau_current) * R0[i]
       
       # susceptible
       
       # dSi1/dt 
-      ODES[num_grp*4+i] = (tau[i-1] * S1[i-1]) - (lambda[i] * sigma_bar[i] + tau[i]) - nu(R1[i] + R0[i])
+      ODES[num_grp*4+i] = (tau_previous * S1[i-1]) - (lambda[i] * sigma_bar[i] + tau_current) - nu(R1[i] + R0[i])
       
       # dEi1/dt
-      ODES[num_grp*5+i] = (tau[i-1] * E1[i-1]) + (lambda[i] * sigma_bar[i] + S1[i]) - (delta + tau[i]) * E1[i]
+      ODES[num_grp*5+i] = (tau_previous * E1[i-1]) + (lambda[i] * sigma_bar[i] + S1[i]) - (delta + tau_current) * E1[i]
       
       # dIi1/dt
-      ODES[num_grp*6+i] = (tau[i-1] * I1[i-1]) + (delta * E1[i]) - (gamma_1 + tau[i]) * I1[i]
+      ODES[num_grp*6+i] = (tau_previous * I1[i-1]) + (delta * E1[i]) - (gamma_1 + tau_current) * I1[i]
       
       # dRi1/dt
-      ODES[num_grp*7+i] = (tau[i-1] * R1[i-1]) + (gamma_1 * I1[i]) - (nu + tau[i]) * R1[i]
+      ODES[num_grp*7+i] = (tau_previous * R1[i-1]) + (gamma_1 * I1[i]) - (nu + tau_current) * R1[i]
       
       # infection = sum(BETA[i,] * I) * S[i] # new infections
       # ODES[i] = NU[i] - infection - mu * S[i]  # corresponds to dS/dt chunk from one at a time coding
