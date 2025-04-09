@@ -359,8 +359,8 @@ display: none;
 
 <div id="data" class="section level2">
 <h2>Data</h2>
-<pre class="r"><code>#load(&quot;data.contact.monthly.rda&quot;)
-#load(&quot;data.greaterPerth.2011.rda&quot;)</code></pre>
+<pre class="r"><code>load(&quot;data.contact.monthly.rda&quot;)
+load(&quot;data.greaterPerth.2011.rda&quot;)</code></pre>
 <pre class="r"><code>#View(data.greaterPerth.2011)</code></pre>
 <pre class="r"><code>delta = 1/4 # inverse of latent period (days)
 gamma_1 = 1/10 # inverse of infectious period for 1st exposure (days)
@@ -394,22 +394,122 @@ previous_exposure_parms &lt;- list(
 )</code></pre>
 <pre class="r"><code>N = 1669809 # total population of metropolitan Perth for ages 0 - 79
 
-SEIR=function(t,state,parameters){
-  with(as.list(c(state,parameters)),{
-    # rate of change
-    dS = -lambda
-    dE = lambda - delta
-    dI = delta - gamma - C
-    dR = gamma
-    
-    dcumInci = beta*S*I/N
-    # FILL IN YOUR SEIR MODEL HERE
+# test_num_grps &lt;- function(num_grp) {
+#   
+#   if (num_grp &lt;= 60) {
+#       total_grps = num_grp
+#     } else {
+#       num_one_mo_grps &lt;- 60
+#       num_five_yr_grps &lt;- ceiling((num_grp - 60)/5)
+#       total_grps &lt;- num_one_mo_grps + num_five_yr_grps
+#     }
+#     
+#   return(total_grps)
+# }
+# 
+# 
+# test_num_grps(75) # expected output - 63; 60 1 mo groups, 3 5 yr groups thereafter
 
-    # return the rate of change
-    # RETURN ALL STATE VARIABLES: 
-    list(c(dS, dE, dI, dR, dcumInci))
-  }) # end with(as.list...)
-}</code></pre>
+rsv_base &lt;- function(num_grp) {
+  with(as.list(c(num_grp)), {
+    
+    # 75 age groups, where 1-60 = 1 month groups (for ppl under 5)
+    # 5 yr groups after
+    
+    # to get number of 5 yr groups
+    
+    if (num_grp &lt;= 60) {
+      total_grps = num_grp
+    } else {
+      num_one_mo_grps &lt;- 60
+      num_five_yr_grps &lt;- ceiling((num_grp - 60)/5)
+      total_grps &lt;- num_one_mo_grps + num_five_yr_grps
+    }
+    
+    total_grps &lt;- total_grps * 2 # need to double amount of grps to account for naive and subsequent exposures
+    
+    # initialize the state variables using the same order passed in
+    
+    # use variable to specify number of groups, so first 1:total_grps are for susceptibles
+    S_naive = state[1:total_grps] 
+    
+    # then total_grps:grp+1:total_grps+num:grp are E columns
+    E_naive = state[total_grps + (1:total_grps)]
+    
+    # shift again by 1:total_grps for I columns
+    I_naive = state[total_grps * 2 + (1:total_grps)]
+    
+    # shift again for R cols
+    R_naive = state[total_grps * 3 + (1:total_grps)]
+    
+    
+    # use variable to specify number of groups, so first 1:total_grps are for susceptibles
+    S_subsequent = state[total_grps * 4 + (1:total_grps)] 
+    
+    # then total_grps:grp+1:total_grps+num:grp are E columns
+    E_subsequent = state[total_grps * 5 + (1:total_grps)]
+    
+    # shift again by 1:total_grps for I columns
+    I_subsequent = state[total_grps * 6 + (1:total_grps)]
+    
+    # shift again for R cols
+    R_subsequent = state[total_grps * 7 + (1:total_grps)]
+    
+    
+    
+    #length = 4 * total_grps bc 4 different state vars (S, E, I, R) for each grp
+    ODES &lt;- vector(length = 4*total_grps) # place holder for the equations: 4 state variables (S, I, A, cumA)
+    
+    # make sure the order of ode eqns. and state variables are the same!
+    for (i in 1:num_grp){
+      
+      if (i == 1) { # if agegrp = 1 (representing 1 month old ppl); birth rate = mu; 0 otherwise
+        tau[i-1] = 0 
+      } else if (i == 75) { # since mortality only occurs in oldest age group, we are in closed system so mortality rate = birth rate
+        tau[i] = mu 
+      } else {
+        tau[i] = tau[i]
+      }
+      
+      # naive
+      
+      # dSi0/dt
+      ODES[i] = (tau[i-1] * S0[i-1]) - (lambda[i] * sigma[i] + mu) * S0[i]
+      
+      # dEi0/dt
+      ODES[num_grp+i] = (tau[i-1] * E0[i-1]) + (lambda[i] * sigma[i] * S0[i]) - (delta + tau[i]) * E0[i]
+      
+      # dIi0/dt 
+      ODES[num_grp*2+i] = (tau[i-1] * I0[i-1]) + (delta * E0[i]) - (gamma_0 + tau[i]) * I0[i]
+      
+      # dRi0/dt
+      ODES[num_grp*3+i] = (tau[i-1] * I0[i-1]) + (delta * E0[i]) - (gamma_0 + tau[i]) * I0[i]
+      
+      # susceptible
+      
+      # dSi1/dt 
+      ODES[num_grp*4+i] = (tau[i-1] * S1[i-1]) - (lambda[i] * sigma_bar[i] + tau[i]) - nu(R1[i] + R0[i])
+      
+      # dEi1/dt
+      ODES[num_grp*5+i] = (tau[i-1] * E1[i-1]) + (lambda[i] * sigma_bar[i] + S1[i]) - (delta + tau[i]) * E1[i]
+      
+      # dIi1/dt
+      ODES[num_grp*6+i] = (tau[i-1] * I1[i-1]) + (delta * E1[i]) - (gamma_1 + tau[i]) * I1[i]
+      
+      # dRi1/dt
+      ODES[num_grp*7+i] = (tau[i-1] * R1[i-1]) + (gamma_1 * I1[i]) - (nu + tau[i]) * R1[i]
+      
+      # infection = sum(BETA[i,] * I) * S[i] # new infections
+      # ODES[i] = NU[i] - infection - mu * S[i]  # corresponds to dS/dt chunk from one at a time coding
+      # ODES[num_grp + i] = infection - mu * I[i] - gamma * I[i] # corresponds to dI/dt chunk
+      # ODES[num_grp * 2 + i] = d * gamma * I[i] - mu * A[i] - m * A[i]  # corresponds to dA/dt
+      # ODES[num_grp * 3 + i] =  d * gamma * I[i] # dcumA/d: cumulative incidence
+    }
+    list(ODES) # ensure you use list() instead of c() as the colnames will have parameter names and more intuitive 
+  })
+}
+
+num_grp &lt;- 75</code></pre>
 </div>
 
 
