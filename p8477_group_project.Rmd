@@ -17,7 +17,13 @@ set.seed(8477)
 ```{r data}
 load("data.contact.monthly.rda")
 load("data.greaterPerth.2011.rda")
-read_csv("Ini_state")
+population <- 
+  read_csv("Ini_state") |> 
+  group_by(...1) |> 
+  mutate(
+    pop_per_age = sum(V1, V3, V9, V11) # get total population per each age group
+  )
+
 ```
 
 ```{r exploratory}
@@ -33,7 +39,6 @@ sigma_e = 0.77 # reduced susceptibility due to previous exposure
 nu = 1/230 # inverse of immunity period (days)
 b0 = 0.0204 # baseline transmission coefficient
 b1 = 0.3396 # amplitude of seasonal variation in transmission
-lambda = 1 # PLACEHOLDER VALUE 
 # lambda(t) = force of infection; related to proportion of population that is infectious and incorporates seasonally-fluctuating transmission 
 
 A = 0.5144 # Max hospitalization risk (at birth, term infants)
@@ -70,7 +75,6 @@ previous_exposure_parms <- list(
 
 ```{r seir}
 
-N = 1669809 # total population of metropolitan Perth for ages 0 - 79
 
 rsv_base <- function(num_grp) {
   with(as.list(c(num_grp)), {
@@ -142,16 +146,14 @@ rsv_base <- function(num_grp) {
       beta_t <- b0 * (1 + b1 * cos(2 * pi * time / 365))
       lambda[i] <- beta_t * sum(data.contact.monthly[i, ] * total_infectious) / N
       
-      
-      
       infection <- beta0*(1+ beta1*cos(2*pi*(time)/12+phi)) * sum(data.contact.monthly[i, ] * (I_naive+(sigma*I_subsequent))/N) 
       # naive
       
       # dSi0/dt
-      ODES[i] = mu + (tau_previous * S0[i-1]) - (lambda[i] * sigma[i] + tau_current) * S0[i]
+      ODES[i] = mu + (tau_previous * S0[i-1]) - (infection * sigma + tau_current) * S0[i]
       
       # dEi0/dt
-      ODES[num_grp+i] = (tau_previous * E0[i-1]) + (lambda[i] * sigma[i] * S0[i]) - (delta + tau_current) * E0[i]
+      ODES[num_grp+i] = (tau_previous * E0[i-1]) + (infection * sigma * S0[i]) - (delta + tau_current) * E0[i]
       
       # dIi0/dt 
       ODES[num_grp*2+i] = (tau_previous * I0[i-1]) + (delta * E0[i]) - (gamma_0 + tau_current) * I0[i]
@@ -162,7 +164,7 @@ rsv_base <- function(num_grp) {
       # susceptible
       
       # dSi1/dt 
-      ODES[num_grp*4+i] = (tau_previous * S1[i-1]) - (lambda[i] * sigma_bar[i] + tau_current) - nu(R1[i] + R0[i])
+      ODES[num_grp*4+i] = (tau_previous * S1[i-1]) - (infection * sigma + tau_current) - nu(R1[i] + R0[i])
       
       # dEi1/dt
       ODES[num_grp*5+i] = (tau_previous * E1[i-1]) + (lambda[i] * sigma_bar[i] + S1[i]) - (delta + tau_current) * E1[i]
@@ -191,7 +193,7 @@ beta0 <- 0.0204
 beta1 <- 0.3396
 parms <- c(beta0 = beta0)
 
-N <- c() # population in each group 
+N <- population$pop_per_age # population in each age group 
 
 state <- c(
   N = N, S_naive = S_0, E_naive = E_0, I_naive = I_0, R_naive = R_0,
