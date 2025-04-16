@@ -113,14 +113,26 @@ rsv_base <- function(num_grp) {
       if (i == 1) { # if agegrp = 1 (representing 1 month old ppl); birth rate = mu; 0 otherwise
         tau_previous = 0 
         tau_current = 1/1 # i <= 60, so still month age groups; assume 1/1 month
+
         
       } else if (i == 75) { # since mortality only occurs in oldest age group, we are in closed system so mortality rate = birth rate
         tau_current = mu 
         tau_previous = 1/(12*5) # i > 60, 5 year groups; assume age rate is 1/(12 months * 5 years)
+        
       } else if (i <= 60) {
         tau_current = tau_previous = 1/1
       } else if (i > 60) {
         tau_current = tau_previous = 1/(12*5) 
+      }
+      
+      if (i == 1) {
+        sigma = sigma_1
+      } else if (i == 2) {
+        sigma = sigma_2
+      } else if (i == 3) {
+        sigma = sigma_3
+      } else {
+        sigma = sigma_4
       }
       
       # calculate lambda for a given age group by summing sources of infection from transmission matrix
@@ -132,7 +144,7 @@ rsv_base <- function(num_grp) {
       
       
       
-      infection <- beta0*(1+ beta1*cos(2*pi*(time)/12+phi)) * sum(data.contact.monthly[i, ] * (I_naive+I_subsequent)/N) 
+      infection <- beta0*(1+ beta1*cos(2*pi*(time)/12+phi)) * sum(data.contact.monthly[i, ] * (I_naive+(sigma*I_subsequent))/N) 
       # naive
       
       # dSi0/dt
