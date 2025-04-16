@@ -30,12 +30,21 @@ gamma_2 = 1/7 # inverse of infectious period for 2+ exposures (days)
 omega = 0.7 # reduced infectiousness of those who have experienced at least 1 prior infection
 sigma_e = 0.77 # reduced susceptibility due to previous exposure
 nu = 1/230 # inverse of immunity period (days)
-
+b0 = 0.0204 # baseline transmission coefficient
+b1 = 0.3396 # amplitude of seasonal variation in transmission
 lambda = 1 # PLACEHOLDER VALUE 
 # lambda(t) = force of infection; related to proportion of population that is infectious and incorporates seasonally-fluctuating transmission 
 
+A = 0.5144 # Max hospitalization risk (at birth, term infants)
+B = 0.3776 # Exponential decay rate of risk with age
 C = 0.015 # average minimum risk of hospitalization across all ages 
 D = 0.2 # scaling factor lowering risk for those with prior exposure 
+
+#*Esha*
+sigma_1 = 0.08 # susceptibility at 1st month
+sigma_2 = 0.45 # susceptibility at 2 month
+sigma_3 = 0.45 # susceptibility at 3rd month
+sigma_4 = 1 # 4+ months
 
 first_exposure_parms <- list(
  lambda = lambda,
@@ -115,7 +124,10 @@ rsv_base <- function(num_grp) {
       
       # calculate lambda for a given age group by summing sources of infection from transmission matrix
       #infection <- sum(data.contact.monthly[i, ] * I)
-      
+# calculate lambda for age group i using both naive and repeat infections: *Esha
+      total_infectious <- I_naive + omega * I_subsequent
+      beta_t <- b0 * (1 + b1 * cos(2 * pi * time / 365))
+      lambda[i] <- beta_t * sum(data.contact.monthly[i, ] * total_infectious) / N
       # naive
       
       # dSi0/dt
