@@ -17,6 +17,7 @@ set.seed(8477)
 ```{r data}
 load("data.contact.monthly.rda")
 load("data.greaterPerth.2011.rda")
+read_csv("Ini_state")
 ```
 
 ```{r exploratory}
@@ -128,6 +129,10 @@ rsv_base <- function(num_grp) {
       total_infectious <- I_naive + omega * I_subsequent
       beta_t <- b0 * (1 + b1 * cos(2 * pi * time / 365))
       lambda[i] <- beta_t * sum(data.contact.monthly[i, ] * total_infectious) / N
+      
+      
+      
+      infection <- beta0*(1+ beta1*cos(2*pi*(time)/12+phi)) * sum(data.contact.monthly[i, ] * (I_naive+I_subsequent)/N) 
       # naive
       
       # dSi0/dt
@@ -167,6 +172,19 @@ rsv_base <- function(num_grp) {
 }
 
 num_grp <- 75
+
+
+phi = 6 # for now?
+beta0 <- 0.0204
+beta1 <- 0.3396
+parms <- c(beta0 = beta0)
+
+N <- c() # population in each group 
+
+state <- c(
+  N = N, S_naive = S_0, E_naive = E_0, I_naive = I_0, R_naive = R_0,
+  S_subsequent = S_1, E_subsequent = E_1, I_subsequent = I_1, R_subsequent = R_1
+)
 ```
 
 
