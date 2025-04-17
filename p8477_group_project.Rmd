@@ -621,4 +621,9 @@ parms <-
 
 test <- ode(y = state, times = times, func = rsv_base, parms = parms)
 ```
+```{r SAVE DATA}
+test |> 
+  as.data.frame() |> 
+  write_csv("model_output_4_17_2025.csv")
+```
 
