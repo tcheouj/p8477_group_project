@@ -215,12 +215,12 @@ sim <- ode(y = state, times = times, func = rsv_base, parms = parms)
 ```
 
 ```{r sandbox}
-delta = 1/4 # inverse of latent period (days)
-gamma_1 = 1/10 # inverse of infectious period for 1st exposure (days)
-gamma_2 = 1/7 # inverse of infectious period for 2+ exposures (days)
+delta = 1/(4/365)/12 # inverse of latent period (days)
+gamma_1 = 1/(10/365)/12 # inverse of infectious period for 1st exposure (days)
+gamma_2 = 1/(7/365)/12 # inverse of infectious period for 2+ exposures (days)
 omega = 0.7 # reduced infectiousness of those who have experienced at least 1 prior infection
 sigma_e = 0.77 # reduced susceptibility due to previous exposure
-nu = 1/230 # inverse of immunity period (days)
+nu = 1/(230/365)/12 # inverse of immunity period (days)
 b0 = 0.0204 # baseline transmission coefficient
 b1 = 0.3396 # amplitude of seasonal variation in transmission
 phi = 0.98456
@@ -599,6 +599,15 @@ rsv_base <- function(times, state, parms) {
 }
 
 
+delta = 1/(4/365)/12 # inverse of latent period (days)
+gamma_1 = 1/(10/365)/12 # inverse of infectious period for 1st exposure (days)
+gamma_2 = 1/(7/365)/12 # inverse of infectious period for 2+ exposures (days)
+omega = 0.7 # reduced infectiousness of those who have experienced at least 1 prior infection
+sigma_e = 0.77 # reduced susceptibility due to previous exposure
+nu = 1/(230/365)/12 # inverse of immunity period (days)
+b0 = 0.0204 # baseline transmission coefficient
+b1 = 0.3396 # amplitude of seasonal variation in transmission
+phi = 0.98456
 
 num_grp <- 75
 N <- population$pop_per_age # population in each age group 
