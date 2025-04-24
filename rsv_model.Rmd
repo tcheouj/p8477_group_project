@@ -1,0 +1,279 @@
+---
+title: "rsv_model"
+author: "Johnstone Tcheou"
+date: "2025-04-23"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(deSolve)
+library(tidyverse)
+```
+```{r data import}
+load("data.contact.monthly.rda")
+load("data.greaterPerth.2011.rda")
+
+population <- # generate initial conditions for each SEIR compartment, stratified by naive vs subsequent exposure and by the 75 age groups
+  read_csv("Ini_state") |> 
+  group_by(...1) |> 
+  mutate(
+    pop_per_age = sum(V1, V3, V9, V11), # get total population per each age group
+    S = sum(V1, V9),
+    E = 0,
+    I = sum(V3, V11),
+    R = 0
+  ) |> 
+  select(S, I, pop_per_age) |>  
+  mutate(
+    S_naive = S*0.05,
+    S_subsequent = S*0.95,,
+    E_naive = 0,
+    E_subsequent = 0,
+    I_naive = I*0.05,
+    I_subsequent = I*0.95,
+    R_naive = 0,
+    R_subsequent = 0
+  ) # assume that 5% of total SEIR compartments are naive; 90% are subsequent; sum(data.greaterPerth.2011[, 4]) -(0 month age group is 6% of total Perth population, so expect naive to be a little less than 6%)
+```
+
+
+```{r seir}
+rsv_base <- function(times, state, parms) {
+  with(as.list(c(state, parms)), {
+    
+    # 75 age groups, where 1-60 = 1 month groups (for ppl under 5)
+    
+    # 5 yr groups after (75 - 60) * 5
+    
+    # initialize the state variables using the same order passed in
+    
+    # use variable to specify number of groups, so first 1:num_grp are for susceptibles
+    S_naive = state[1:num_grp] 
+    
+    # then num_grp:grp+1:num_grp+num:grp are E columns
+    E_naive = state[num_grp + (1:num_grp)]
+    
+    # shift again by 1:num_grp for I columns
+    I_naive = state[num_grp * 2 + (1:num_grp)]
+    
+    # shift again for R cols
+    R_naive = state[num_grp * 3 + (1:num_grp)]
+    
+    # use variable to specify number of groups, so first 1:num_grp are for susceptibles
+    S_subsequent = state[num_grp * 4 + (1:num_grp)] 
+    # then num_grp:grp+1:num_grp+num:grp are E columns
+    E_subsequent = state[num_grp * 5 + (1:num_grp)]
+    
+    # shift again by 1:num_grp for I columns
+    I_subsequent = state[num_grp * 6 + (1:num_grp)]
+    
+    # shift again for R cols
+    R_subsequent = state[num_grp * 7 + (1:num_grp)]
+    
+    #length = 8 * num_grp bc 4 different state vars (S, E, I, R) for each grp (2 grps, naive and subsequent)
+    ODES <- vector(length = 8*num_grp)
+    
+    # tau_shift = c(N[1], tau[-1]) # wy - error
+    # tau_shift = c(N[1], tau[-num_grp]) # wy
+    tau_shift = c(mu[1]*sum(N), tau[-num_grp])
+    S_naive_shift = c(1, S_naive[-num_grp])
+    E_naive_shift = c(0, E_naive[-num_grp])
+    I_naive_shift = c(0, I_naive[-num_grp])
+    R_naive_shift = c(0, R_naive[-num_grp])
+    
+    S_subsequent_shift = c(0, S_subsequent[-num_grp])
+    E_subsequent_shift = c(0, E_subsequent[-num_grp])
+    I_subsequent_shift = c(0, I_subsequent[-num_grp])
+    R_subsequent_shift = c(0, R_subsequent[-num_grp])
+    
+    # make sure the order of ode eqns. and state variables are the same!
+    
+    sn.t =  b0*(1+ b1*cos(2*pi*(times)/12+phi)) # wy - compute once outside the for-loop to save time
+    # update pop size in each group
+    N = S_naive + E_naive + I_naive + R_naive + S_subsequent + E_subsequent + I_subsequent + R_subsequent
+    
+    for (i in 1:num_grp){
+      
+      # calculate lambda for a given age group by summing sources of infection from transmission matrix
+      #infection <- sum(data.contact.monthly[i, ] * I)
+      # calculate lambda for age group i using both naive and repeat infections: *Esha
+      # total_infectious <- I_naive + omega * I_subsequent
+      # beta_t <- b0 * (1 + b1 * cos(2 * pi * time / 365))
+      # lambda[i] <- beta_t * sum(data.contact.monthly[i, ] * total_infectious) / N
+      
+      
+      # infection <- b0*(1+ b1*cos(2*pi*(times)/12+phi)) * sum(data.contact.monthly[i, ] * (I_naive+(omega*I_subsequent))/N) 
+      
+      infection <- sn.t * sum(data.contact.monthly[i, ] * (I_naive+(omega*I_subsequent))/N) 
+      
+      # naive
+      
+      # dSi0/dt
+      ODES[i] = (tau_shift[i] * S_naive_shift[i]) - (infection * sigma[i] + tau[i]) * S_naive[i]
+      
+      # dEi0/dt
+      ODES[num_grp+i] = (tau_shift[i] * E_naive_shift[i]) + (infection * sigma[i] * S_naive[i]) - (delta + tau[i]) * E_naive[i]
+      
+      # dIi0/dt 
+      ODES[num_grp*2+i] = (tau_shift[i] * I_naive_shift[i]) + (delta * E_naive[i]) - (gamma_1 + tau[i]) * I_naive[i]
+      
+      # dRi0/dt
+      ODES[num_grp*3+i] = (tau_shift[i] * R_naive_shift[i]) + (gamma_1 * I_naive[i]) - (nu + tau[i]) * R_naive[i]
+      
+      # susceptible
+      
+      # dSi1/dt 
+      # ODES[num_grp*4+i] = (tau_shift[i] * S_subsequent_shift[i]) - (infection * sigma_e * sigma[i] + tau[i]) * S_subsequent[i] - nu * (R_subsequent[i] + R_naive[i]) # what is sigma_bar_i
+      # wy - bug in the code: waning immunity should be positive here
+      ODES[num_grp*4+i] = (tau_shift[i] * S_subsequent_shift[i]) - (infection * sigma_e * sigma[i] + tau[i]) * S_subsequent[i] + nu * (R_subsequent[i] + R_naive[i]) # what is sigma_bar_i
+      
+      # dEi1/dt
+      ODES[num_grp*5+i] = (tau_shift[i] * E_subsequent_shift[i]) + (infection * sigma_e * sigma[i] * S_subsequent[i]) - (delta + tau[i]) * E_subsequent[i]
+      
+      # dIi1/dt
+      ODES[num_grp*6+i] = (tau_shift[i] * I_subsequent_shift[i]) + (delta * E_subsequent[i]) - (gamma_2 + tau[i]) * I_subsequent[i]
+      
+      # dRi1/dt
+      ODES[num_grp*7+i] = (tau_shift[i] * R_subsequent_shift[i]) + (gamma_2 * I_subsequent[i]) - (nu + tau[i]) * R_subsequent[i]
+      
+      # infection = sum(BETA[i,] * I) * S[i] # new infections
+      # ODES[i] = NU[i] - infection - mu * S[i]  # corresponds to dS/dt chunk from one at a time coding
+      # ODES[num_grp + i] = infection - mu * I[i] - gamma * I[i] # corresponds to dI/dt chunk
+      # ODES[num_grp * 2 + i] = d * gamma * I[i] - mu * A[i] - m * A[i]  # corresponds to dA/dt
+      # ODES[num_grp * 3 + i] =  d * gamma * I[i] # dcumA/d: cumulative incidence
+    }
+    list(ODES) # ensure you use list() instead of c() as the colnames will have parameter names and more intuitive 
+  })
+}
+
+# initial conditions, and parameters
+N <- population$pop_per_age # population in each age group 
+sum(N)
+num_grp = length(N)
+delta = 1/(4/365)/12 # inverse of latent period (days)
+gamma_1 = 1/(10/365)/12 # inverse of infectious period for 1st exposure (days)
+gamma_2 = 1/(7/365)/12 # inverse of infectious period for 2+ exposures (days)
+omega = 0.7 # reduced infectiousness of those who have experienced at least 1 prior infection
+sigma_e = 0.77 # reduced susceptibility due to previous exposure
+nu = 1/(230/365)/12 # inverse of immunity period (days)
+b0 = 0.0204 # baseline transmission coefficient
+b1 = 0.3396 # amplitude of seasonal variation in transmission
+phi = 0.98456
+
+sigma_1 = 0.08 # susceptibility at 1st month
+sigma_2 = 0.45 # susceptibility at 2 month
+sigma_3 = 0.45 # susceptibility at 3rd month
+sigma_4 = 1 # 4+ months
+
+sigma = c(sigma_1, sigma_2, sigma_3, rep(sigma_4, num_grp - 3))
+mu = c(1/(83.1*12), rep(0, num_grp-1))
+# nu = c(rep(0, num_grp - 1), 1/(5*12))
+tau = c(rep(1,60), rep(1/(5*12), num_grp-60))
+
+times = seq(0, 12*50, 1/(365/12)) # wy: daily time step
+
+state <- c(
+  S_naive = population$S_naive, E_naive = population$E_naive, I_naive = population$I_naive, R_naive = population$R_naive,
+  S_subsequent = population$S_subsequent, E_subsequent = population$E_subsequent, I_subsequent = population$I_subsequent, R_subsequent = population$R_subsequent
+)
+
+parms <- list(b0 = b0, b1 = b1, phi = phi, mu = mu, nu = nu,
+              sigma = sigma, # sigma_1 = sigma_1, sigma_2 = sigma_2, sigma_3 = sigma_3, sigma_4 = sigma_4, 
+              gamma_1 = gamma_1, gamma_2 = gamma_2, 
+              delta = delta, omega = omega, num_grp = num_grp,
+              tau = tau)
+
+
+sim <- ode(y = state, times = times, func = rsv_base, parms = parms)
+
+
+```
+
+```{r checking numbers}
+# check totals per timepoint
+S_0 = rowSums(sim[, paste0('S_naive',1:num_grp)])
+S_1 = rowSums(sim[,paste0('S_subsequent', 1:num_grp)])
+I_0 = rowSums(sim[, paste0('I_naive',1:num_grp)])
+I_1 = rowSums(sim[,paste0('I_subsequent', 1:num_grp)])
+N_t = rowSums(sim[,-1])
+
+N_grp_t = numeric(num_grp)
+for(i in 1:num_grp){
+  N_grp_t[i] = sum(sim[nrow(sim), paste0(c('S_naive','E_naive','I_naive','R_naive','S_subsequent','E_subsequent','I_subsequent','R_subsequent'),i)])
+}
+
+rbind(N_ini = N, N_t = N_grp_t) # compare the pop size in each age group
+
+plot(S_0, type = 'l')
+plot(S_1, type = 'l')
+
+plot(I_0, type = 'l')
+plot(I_1, type = 'l')
+
+plot(N_t, type = 'l')
+
+sim |>
+  as.data.frame() |> 
+  rowwise() |> 
+  mutate(
+    pop_size = sum(c_across(2:ncol(sim_df)))
+  ) # check to make sure pop_size is same across all rows; if not, something going on with birthrate
+```
+
+```{r}
+sim <- ode(y = state, times = times, func = rsv_base_alt, parms = parms)
+
+sim_df <-
+  sim |> 
+  as.data.frame() |> 
+  pivot_longer(
+    !time, 
+    names_to = "compartment", 
+    values_to = "count"
+  ) |>
+  filter(between(time, 120, 600)) |> # get rid of "burn in" to get seasonality
+  separate_wider_delim(compartment, "_", names = c("compartment", "exposure")) |> 
+  mutate(
+    age_grp = as.numeric(str_extract_all(exposure, "\\d+")),
+    exposure = gsub("[[:digit:]]", "", exposure),
+    year = 2025 + time/12,
+    age_c = case_when(
+      age_grp < 3 ~ "<3",
+      age_grp < 6 ~ "3<6",
+      age_grp < 12 ~ "6<12", 
+      age_grp < 24 ~ "12<24",
+      age_grp < 60 ~ "24<60"
+    ) # create categorical variable to create smaller age groups for graphing purposes
+  )
+
+sim_df |> 
+  filter(age_c == "12<24") |> 
+  filter(compartment == "I" & exposure == "naive") |> 
+  arrange(time, desc(count))
+    
+sim_alt_df |> 
+  filter(compartment == "I" & exposure == "naive") |> 
+  filter(!is.na(age_c)) |> 
+  rename(Age = age_c, Count = count, Year = year) |> 
+  mutate(Age = factor(Age, levels = c("<3", "3<6", "6<12", "12<24", "24<60"))) |> 
+  ggplot(aes(x = Year, y = Count, color = Age)) +
+  geom_point() + 
+  facet_grid(rows = vars(Age))
+
+sim_alt_df |> 
+  filter(compartment == "I" & exposure == "naive") |> 
+  filter(!is.na(age_c)) |> 
+  rename(Age = age_c, Count = count, Year = year) |> 
+  mutate(Age = factor(Age, levels = c("<3", "3<6", "6<12", "12<24", "24<60"))) |> 
+  ggplot(aes(x = Year, y = Count, color = Age)) +
+  geom_point() + 
+  ggtitle("Simulated infectious by age group (months)") + 
+  theme(
+    legend.position = "none"
+  ) +
+  facet_grid(rows = vars(Age))
+
+ggsave()
+```
+
